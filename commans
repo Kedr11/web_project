@@ -1,0 +1,5 @@
+pip install PyNaCl
+pip install ffmpeg
+pip install asyncio
+pip install yt-dlp
+pip install discord
