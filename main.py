@@ -1,8 +1,7 @@
 import asyncio
-from token import TOKEN
 import discord
 import yt_dlp
-
+from token_project import TOKEN
 from discord.ext import commands
 
 yt_dlp.utils.bug_reports_message = lambda: ''
@@ -25,12 +24,10 @@ ffmpeg_options = {
     'options': '-vn',
 }
 
-queues = {}
-
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 
-class YTDLSource(discord.PCMVolumeTransformer):  # класс для совершения запроса на youtube
+class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
         super().__init__(source, volume)
 
@@ -54,10 +51,10 @@ class YTDLSource(discord.PCMVolumeTransformer):  # класс для совер�
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queue = []
+        self.queue = {}
 
     @commands.command()
-    async def join(self, ctx, *, channel: discord.VoiceChannel):  # присоединяется к голосовому каналу
+    async def join(self, ctx, *, channel: discord.VoiceChannel):
         if ctx.voice_client is not None:
             return await ctx.voice_client.move_to(channel)
 
@@ -66,17 +63,12 @@ class Music(commands.Cog):
     @commands.command()
     async def play(self, ctx, *, url):  # проигрывает трек, можно передать как ссылку, так и просто название
         async with ctx.typing():
-            if url != 'queue':
-                player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
-                ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
-            else:
-                for elem in self.queue:
-                    player = await YTDLSource.from_url(elem, loop=self.bot.loop, stream=True)
-                    ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else None)
+            player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
+            ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else self.play_next(ctx))
         await ctx.send(f'Now playing: {player.title}')
 
     @commands.command()
-    async def volume(self, ctx, volume: int):  # громкость, значение от 0 до 100
+    async def volume(self, ctx, volume: int):
         if ctx.voice_client is None:
             return await ctx.send("Not connected to a voice channel.")
 
@@ -95,7 +87,30 @@ class Music(commands.Cog):
     async def resume(self, ctx):
         await ctx.voice_client.resume()
 
+    @commands.command()
+    async def queue(self, ctx, *, url):
+        guild_id = ctx.guild.id
+        if guild_id not in self.queue:
+            self.queue[guild_id] = []
+        self.queue[guild_id].append(url)
+        await ctx.send(f"Added to queue: {url}")
+
+    @commands.command(name='play-q')
+    async def play_q(self, ctx):  # проигрывает трек, первый стоящий в очереди
+        async with ctx.typing():
+            player = await YTDLSource.from_url(self.queue[ctx.guild.id].pop(0), loop=self.bot.loop, stream=True)
+            ctx.voice_client.play(player, after=lambda e: print(f'Player error: {e}') if e else self.play_next(ctx))
+        await ctx.send(f'Now playing: {player.title}')
+
+    @commands.command(name='q-info')
+    async def q_info(self, ctx):
+        q = self.queue[ctx.guild.id]
+        for i in range(len(q)):
+            response = str(i + 1) + '. ' + q[i]
+            await ctx.send(response)
+
     @play.before_invoke
+    @play_q.before_invoke
     async def ensure_voice(self, ctx):
         if ctx.voice_client is None:
             if ctx.author.voice:
@@ -105,6 +120,13 @@ class Music(commands.Cog):
                 raise commands.CommandError("Author not connected to a voice channel.")
         elif ctx.voice_client.is_playing():
             ctx.voice_client.stop()
+
+    def play_next(self, ctx):
+        if ctx.guild.id in self.queue and self.queue[ctx.guild.id]:
+            url = self.queue[ctx.guild.id].pop(0)
+            asyncio.run_coroutine_threadsafe(self.play(ctx, url=url), self.bot.loop)
+        else:
+            asyncio.run_coroutine_threadsafe(ctx.send("Queue is empty."), self.bot.loop)
 
 
 intents = discord.Intents.default()
