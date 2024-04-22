@@ -3,6 +3,7 @@ import discord
 import yt_dlp
 from token_project import TOKEN
 from discord.ext import commands
+from googletrans import Translator
 
 yt_dlp.utils.bug_reports_message = lambda: ''
 
@@ -129,6 +130,33 @@ class Music(commands.Cog):
             asyncio.run_coroutine_threadsafe(ctx.send("Queue is empty."), self.bot.loop)
 
 
+# Класс для команд перевода
+class TranslateBot(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.translator = Translator()
+
+    @commands.command(name="translate")
+    async def translate(self, ctx, target_language: str, *,
+                        text=None):  # язык, на который хотим перевести должен быть написан полностью и на английском
+        if text:
+            # Если задан текст, переводим его
+            translated = self.translator.translate(text, dest=target_language)
+            await ctx.send(f"Перевод: {translated.text}")
+        else:
+            # Если текст не задан, пробуем перевести ответное сообщение
+            if ctx.message.reference and ctx.message.reference.message_id:
+                referenced_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+
+                if referenced_message.content:
+                    translated = self.translator.translate(referenced_message.content, dest=target_language)
+                    await ctx.send(f"Перевод: {translated.text}")
+                else:
+                    await ctx.send("Сообщение пустое или недоступно для перевода.")
+            else:
+                await ctx.send("Не найдено сообщение, на которое ответили. Укажите текст или ответьте на сообщение.")
+
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -148,6 +176,7 @@ async def on_ready():
 async def main():
     async with bot:
         await bot.add_cog(Music(bot))
+        await bot.add_cog(TranslateBot(bot))
         await bot.start(TOKEN)
 
 
