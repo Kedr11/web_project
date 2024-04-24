@@ -157,6 +157,79 @@ class TranslateBot(commands.Cog):
                 await ctx.send("Не найдено сообщение, на которое ответили. Укажите текст или ответьте на сообщение.")
 
 
+class Survey(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.active_surveys = {}
+
+    @commands.command(name="survey")
+    async def create_survey(self, ctx, *, content: str):  # !create_survey Вопрос? | Опция 1, Опция 2, Опция 3
+
+        # Проверка наличия разделителя
+        if '|' not in content:
+            await ctx.send("Используйте '|' чтобы разделить вопрос от опций.")
+            return
+
+        # Разделение вопроса и опций
+        question, raw_options = content.split('|', 1)
+        options = [opt.strip() for opt in raw_options.split(',')]
+
+        if len(options) < 2:
+            await ctx.send("Для опроса требуется хотя бы два варианта.")
+            return
+
+        if ctx.channel.id in self.active_surveys:
+            await ctx.send("В этом канале уже идет опрос. Завершите его, чтобы начать новый.")
+            return
+
+        survey_message = await ctx.send(f"**Опрос:** {question}\n" +
+                                        "\n".join(f"{i + 1}. {opt}" for i, opt in enumerate(options)))
+
+        # Добавление реакций для голосования
+        emoji_numbers = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
+        for i in range(len(options)):
+            await survey_message.add_reaction(emoji_numbers[i])
+
+        self.active_surveys[ctx.channel.id] = {
+            "question": question,
+            "options": list(options),
+            "message_id": survey_message.id,
+            "reactions": emoji_numbers[:len(options)]
+        }
+
+    @commands.command(name="end-survey")
+    async def end_survey(self, ctx):
+        # Завершение опроса в текущем канале
+        if ctx.channel.id not in self.active_surveys:
+            await ctx.send("В этом канале нет активных опросов.")
+            return
+
+        survey = self.active_surveys.pop(ctx.channel.id)
+        survey_message = await ctx.channel.fetch_message(survey["message_id"])
+
+        # Подсчет голосов
+        results = {opt: 0 for opt in survey["options"]}
+
+        for reaction in survey_message.reactions:
+            if reaction.emoji in survey["reactions"]:
+                idx = survey["reactions"].index(reaction.emoji)
+                results[survey["options"][idx]] = reaction.count - 1  # вычитаем 1, так как сам бот тоже ставит реакцию
+
+        # Отображение результатов
+        result_message = "**Результаты опроса:**\n" + "\n".join(f"{opt}: {count}" for opt, count in results.items())
+        await ctx.send(result_message)
+
+    @commands.command(name="active_survey")
+    async def active_survey(self, ctx):
+        # Проверка, есть ли активный опрос в текущем канале
+        if ctx.channel.id in self.active_surveys:
+            survey = self.active_surveys[ctx.channel.id]
+
+            await ctx.send(f"В этом канале идет опрос: {survey['question']}")
+        else:
+            await ctx.send("В этом канале нет активных опросов.")
+
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -177,6 +250,7 @@ async def main():
     async with bot:
         await bot.add_cog(Music(bot))
         await bot.add_cog(TranslateBot(bot))
+        await bot.add_cog(Survey(bot))
         await bot.start(TOKEN)
 
 
