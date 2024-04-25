@@ -5,4 +5,4 @@ pip install yt-dlp
 pip install discord
 pip install discord googletrans==3.1.0a0
 pip install sqlite3
-
+# также надо установить сам кодек ffmpeg с их официального сайта
